@@ -6,6 +6,8 @@ curl -sL https://raw.githubusercontent.com/ang3el7z/setup-bot/master/install | s
 
 ## Параметры
 
+| Параметр | Описание |
+|----------|----------|
 | `-r`, `-restart` | Перезапуск бота (make r) |
 | `-s`, `-swap` | Создать и включить swap (1.5 GB) |
 | `-suc`, `-stop-unwanted-containers` | Остановить ненужные Docker-контейнеры |
