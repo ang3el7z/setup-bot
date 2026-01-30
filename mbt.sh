@@ -3,7 +3,16 @@
 # =============================================================================
 # MBT — единая точка входа и все настройки
 # Без параметров: интерактивное меню по цифрам
-# С параметром: mbt.sh -r или -restart | -s или -swap | -suc или -stop-unwanted-containers
+#
+# С параметром:
+#   -r, -restart              Перезапуск бота (make r)
+#   -s, -swap                 Создать и включить swap (1.5 GB)
+#   -suc, -stop-unwanted-containers   Остановить ненужные Docker-контейнеры
+#   -crontab-r, -crontab-reboot       Добавить в crontab автоперезапуск бота при загрузке
+#   -crontab-suc, -crontab-stop-unwanted-containers          Добавить в crontab остановку контейнеров после загрузки
+#   -bbr                     Подменю BBR (вкл/выкл)
+#   -f2b, -fail2ban          Подменю Fail2ban (защита SSH)
+#   -h, --help               Справка
 # =============================================================================
 
 red='\033[0;31m'
@@ -46,8 +55,8 @@ usage() {
   echo -e "  ${green}-restart${plain}, ${green}-r${plain}              Перезапуск бота (make r)"
   echo -e "  ${green}-swap${plain}, ${green}-s${plain}              Создать и включить swap (1.5 GB)"
   echo -e "  ${green}-stop-unwanted-containers${plain}, ${green}-suc${plain}   Остановить ненужные Docker-контейнеры"
-  echo -e "  ${green}-crontab-reboot${plain}           Добавить в crontab автоперезапуск бота при загрузке"
-  echo -e "  ${green}-crontab-suc${plain}             Добавить в crontab остановку контейнеров после загрузки"
+  echo -e "  ${green}-crontab-reboot${plain}, ${green}-crontab-r${plain}   Добавить в crontab автоперезапуск бота при загрузке"
+  echo -e "  ${green}-crontab-suc${plain}, ${green}-crontab-stop-unwanted-containers${plain}   Добавить в crontab остановку контейнеров после загрузки"
   echo -e "  ${green}-bbr${plain}                     Подменю BBR (вкл/выкл)"
   echo -e "  ${green}-fail2ban${plain}, ${green}-f2b${plain}          Подменю Fail2ban (защита SSH)"
   echo -e "  ${green}-h${plain}, ${green}--help${plain}               Справка"
@@ -375,6 +384,7 @@ show_menu() {
       6) bbr_menu ;;
       7) f2b_menu ;;
       0) LOGI "Выход."; exit 0 ;;
+      "") ;;   # пустой ввод — показать меню снова
       *) LOGE "Неверный выбор." ;;
     esac
   done
@@ -388,6 +398,11 @@ cmd="${1:-}"
 case "${cmd#--}" in
   -h|help|"")
     if [[ -z "$cmd" ]]; then
+      if [[ ! -t 0 ]]; then
+        LOGE "Для меню нужен интерактивный терминал. Запустите: ./mbt.sh   или укажите команду: ./mbt.sh -r"
+        usage
+        exit 1
+      fi
       show_menu
     else
       usage
@@ -403,10 +418,10 @@ case "${cmd#--}" in
   -suc|-stop-unwanted-containers)
     run_stop_containers
     ;;
-  -crontab-reboot)
+  -crontab-r|-crontab-reboot)
     crontab_add_reboot_restart
     ;;
-  -crontab-suc)
+  -crontab-suc|-crontab-stop-unwanted-containers)
     crontab_add_stop_containers
     ;;
   -bbr)
