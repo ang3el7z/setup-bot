@@ -1,5 +1,5 @@
 # setup-bot
 
 ```shell
-./managerbot.sh
+wget -qO- https://raw.githubusercontent.com/ang3el7z/setup-bot/master/managerbot.sh | bash
 ```
