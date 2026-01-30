@@ -46,7 +46,8 @@ usage() {
   echo -e "  ${green}-restart${plain}, ${green}-r${plain}              Перезапуск бота (make r)"
   echo -e "  ${green}-swap${plain}, ${green}-s${plain}              Создать и включить swap (1.5 GB)"
   echo -e "  ${green}-stop-unwanted-containers${plain}, ${green}-suc${plain}   Остановить ненужные Docker-контейнеры"
-  echo -e "  ${green}-add-crontab-stop-containers${plain} Добавить в crontab задачу остановки контейнеров после перезагрузки"
+  echo -e "  ${green}-crontab-reboot${plain}           Добавить в crontab автоперезапуск бота при загрузке"
+  echo -e "  ${green}-crontab-suc${plain}             Добавить в crontab остановку контейнеров после загрузки"
   echo -e "  ${green}-bbr${plain}                     Подменю BBR (вкл/выкл)"
   echo -e "  ${green}-fail2ban${plain}, ${green}-f2b${plain}          Подменю Fail2ban (защита SSH)"
   echo -e "  ${green}-h${plain}, ${green}--help${plain}               Справка"
@@ -115,15 +116,86 @@ run_stop_containers() {
   LOGI "Ненужные контейнеры обработаны."
 }
 
-# Добавить в crontab задачу: через 5 мин после reboot — stop-unwanted-containers с логом
-run_add_crontab_stop_containers() {
-  local line="@reboot (sleep 300 && cd $cur_dir && ./managerbot.sh -suc) >> /var/log/docker-cleanup.log 2>&1"
-  if crontab -l 2>/dev/null | grep -qF "managerbot.sh -suc"; then
-    LOGD "Задача уже есть в crontab."
+# --- Crontab: автоперезапуск бота при загрузке ---
+CRONTAB_REBOOT_RESTART="@reboot cd $VPNBOT_DIR && make r"
+
+crontab_has_reboot_restart() {
+  crontab -l 2>/dev/null | grep -qF "$VPNBOT_DIR && make r"
+}
+
+crontab_add_reboot_restart() {
+  if crontab_has_reboot_restart; then
+    LOGD "Автоперезапуск бота уже включён в crontab."
     return 0
   fi
-  (crontab -l 2>/dev/null; echo "$line") | crontab -
-  LOGI "В crontab добавлено: $line"
+  (crontab -l 2>/dev/null; echo "$CRONTAB_REBOOT_RESTART") | crontab -
+  LOGI "В crontab добавлено: $CRONTAB_REBOOT_RESTART"
+}
+
+crontab_remove_reboot_restart() {
+  if ! crontab_has_reboot_restart; then
+    LOGD "Автоперезапуск бота не найден в crontab."
+    return 0
+  fi
+  crontab -l 2>/dev/null | grep -vF "$VPNBOT_DIR && make r" | crontab -
+  LOGI "Автоперезапуск бота удалён из crontab."
+}
+
+crontab_menu_reboot_restart() {
+  echo ""
+  echo -e "${green}  Автоперезапуск бота при загрузке${plain}"
+  echo -e "  ${blue}1.${plain} Включить (добавить в crontab)"
+  echo -e "  ${blue}2.${plain} Выключить (удалить из crontab)"
+  echo -e "  ${blue}0.${plain} Назад"
+  echo -n "Выберите [0-2]: "
+  read -r choice
+  case "$choice" in
+    1) crontab_add_reboot_restart; before_show_menu ;;
+    2) crontab_remove_reboot_restart; before_show_menu ;;
+    0) show_menu ;;
+    *) LOGE "Неверный выбор."; crontab_menu_reboot_restart ;;
+  esac
+}
+
+# --- Crontab: остановка контейнеров после загрузки ---
+CRONTAB_REBOOT_SUC="@reboot (sleep 300 && cd $cur_dir && ./managerbot.sh -suc) >> /var/log/docker-cleanup.log 2>&1"
+
+crontab_has_stop_containers() {
+  crontab -l 2>/dev/null | grep -qF "managerbot.sh -suc"
+}
+
+crontab_add_stop_containers() {
+  if crontab_has_stop_containers; then
+    LOGD "Остановка контейнеров после загрузки уже включена в crontab."
+    return 0
+  fi
+  (crontab -l 2>/dev/null; echo "$CRONTAB_REBOOT_SUC") | crontab -
+  LOGI "В crontab добавлено: $CRONTAB_REBOOT_SUC"
+}
+
+crontab_remove_stop_containers() {
+  if ! crontab_has_stop_containers; then
+    LOGD "Остановка контейнеров после загрузки не найдена в crontab."
+    return 0
+  fi
+  crontab -l 2>/dev/null | grep -vF "managerbot.sh -suc" | crontab -
+  LOGI "Остановка контейнеров после загрузки удалена из crontab."
+}
+
+crontab_menu_stop_containers() {
+  echo ""
+  echo -e "${green}  Остановка контейнеров после загрузки${plain}"
+  echo -e "  ${blue}1.${plain} Включить (добавить в crontab)"
+  echo -e "  ${blue}2.${plain} Выключить (удалить из crontab)"
+  echo -e "  ${blue}0.${plain} Назад"
+  echo -n "Выберите [0-2]: "
+  read -r choice
+  case "$choice" in
+    1) crontab_add_stop_containers; before_show_menu ;;
+    2) crontab_remove_stop_containers; before_show_menu ;;
+    0) show_menu ;;
+    *) LOGE "Неверный выбор."; crontab_menu_stop_containers ;;
+  esac
 }
 
 # --- BBR ---
@@ -286,20 +358,22 @@ show_menu() {
     echo -e "  ${blue}1.${plain} Перезапуск бота (make r)"
     echo -e "  ${blue}2.${plain} Создать swap 1.5 GB"
     echo -e "  ${blue}3.${plain} Остановить ненужные Docker-контейнеры"
-    echo -e "  ${blue}4.${plain} Добавить в crontab задачу остановки контейнеров после перезагрузки"
-    echo -e "  ${blue}5.${plain} BBR (вкл/выкл)"
-    echo -e "  ${blue}6.${plain} Fail2ban (защита SSH)"
+    echo -e "  ${blue}4.${plain} Автоперезапуск бота при загрузке (вкл/выкл)"
+    echo -e "  ${blue}5.${plain} Остановка контейнеров после загрузки (вкл/выкл)"
+    echo -e "  ${blue}6.${plain} BBR (вкл/выкл)"
+    echo -e "  ${blue}7.${plain} Fail2ban (защита SSH)"
     echo -e "  ${blue}0.${plain} Выход"
     echo -e "${green}═══════════════════════════════════════${plain}"
-    echo -n "Выберите действие [0-6]: "
+    echo -n "Выберите действие [0-7]: "
     read -r choice
     case "$choice" in
       1) run_restart; prompt_back_or_exit || exit 0 ;;
       2) run_swap; prompt_back_or_exit || exit 0 ;;
       3) run_stop_containers; prompt_back_or_exit || exit 0 ;;
-      4) run_add_crontab_stop_containers; prompt_back_or_exit || exit 0 ;;
-      5) bbr_menu ;;
-      6) f2b_menu ;;
+      4) crontab_menu_reboot_restart ;;
+      5) crontab_menu_stop_containers ;;
+      6) bbr_menu ;;
+      7) f2b_menu ;;
       0) LOGI "Выход."; exit 0 ;;
       *) LOGE "Неверный выбор." ;;
     esac
@@ -329,8 +403,11 @@ case "${cmd#--}" in
   -suc|-stop-unwanted-containers)
     run_stop_containers
     ;;
-  -add-crontab-stop-containers)
-    run_add_crontab_stop_containers
+  -crontab-reboot)
+    crontab_add_reboot_restart
+    ;;
+  -crontab-suc)
+    crontab_add_stop_containers
     ;;
   -bbr)
     bbr_menu
