@@ -1,12 +1,12 @@
 # setup-bot
 
-Скачать и запустить (интерактивное меню — запускайте в терминале):
+Скачать и запустить (файл сохранится в текущую папку):
 
 ```shell
-bash <(curl -s https://raw.githubusercontent.com/ang3el7z/setup-bot/master/mbt.sh)
+wget -qO mbt.sh https://raw.githubusercontent.com/ang3el7z/setup-bot/master/mbt.sh && chmod +x mbt.sh && ./mbt.sh
 ```
 
-Без параметров — интерактивное меню по цифрам.
+Без параметров — интерактивное меню. С параметром: `./mbt.sh -r`, `./mbt.sh -suc`, `./mbt.sh -crontab-suc` и т.д.
 
 ## Параметры (cron, одна команда)
 
