@@ -1,6 +1,6 @@
 #!/bin/bash
 # Install: curl -sL https://raw.githubusercontent.com/ang3el7z/setup-bot/master/install | sudo bash
 set -e
-wget -qO /usr/local/bin/mbt https://raw.githubusercontent.com/ang3el7z/setup-bot/master/mbt.sh
+wget -qO /usr/local/bin/mbt https://raw.githubusercontent.com/ang3el7z/setup-bot/master/scripts/mbt.sh
 chmod +x /usr/local/bin/mbt
 exec mbt "$@"

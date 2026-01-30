@@ -28,6 +28,7 @@ LOGE() { echo -e "${red}[ERR] $* ${plain}"; }
 LOGI() { echo -e "${green}[INF] $* ${plain}"; }
 
 cur_dir="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_NAME="$(basename "$0")"
 
 # --- Настройки ---
 VPNBOT_DIR="${VPNBOT_DIR:-/root/vpnbot}"
@@ -169,10 +170,10 @@ crontab_menu_reboot_restart() {
 }
 
 # --- Crontab: остановка контейнеров после загрузки ---
-CRONTAB_REBOOT_SUC="@reboot (sleep 300 && cd $cur_dir && ./mbt.sh -suc)"
+CRONTAB_REBOOT_SUC="@reboot (sleep 300 && cd $cur_dir && ./$SCRIPT_NAME -suc)"
 
 crontab_has_stop_containers() {
-  crontab -l 2>/dev/null | grep -qF "mbt.sh -suc"
+  crontab -l 2>/dev/null | grep -qF "./$SCRIPT_NAME -suc"
 }
 
 crontab_add_stop_containers() {
@@ -189,7 +190,7 @@ crontab_remove_stop_containers() {
     LOGD "Остановка контейнеров после загрузки не найдена в crontab."
     return 0
   fi
-  crontab -l 2>/dev/null | grep -vF "mbt.sh -suc" | crontab -
+  crontab -l 2>/dev/null | grep -vF "./$SCRIPT_NAME -suc" | crontab -
   LOGI "Остановка контейнеров после загрузки удалена из crontab."
 }
 
@@ -464,7 +465,7 @@ case "${cmd#--}" in
   -h|help|"")
     if [[ -z "$cmd" ]]; then
       if [[ ! -t 0 ]]; then
-        LOGE "Для меню нужен интерактивный терминал. Запустите: ./mbt.sh   или укажите команду: ./mbt.sh -r"
+        LOGE "Для меню нужен интерактивный терминал. Запустите: mbt   или укажите команду: mbt -r"
         usage
         exit 1
       fi
