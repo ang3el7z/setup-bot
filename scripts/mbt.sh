@@ -216,7 +216,7 @@ enable_bbr() {
   check_root
   if [[ $(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null) == "bbr" ]] && [[ $(sysctl -n net.core.default_qdisc 2>/dev/null) =~ ^(fq|cake)$ ]]; then
     LOGI "BBR уже включён."
-    before_show_menu
+    [[ -z "$RUN_ALL_IN_ONE" ]] && before_show_menu
     return
   fi
   if [[ -d /etc/sysctl.d ]]; then
@@ -239,13 +239,14 @@ enable_bbr() {
   else
     LOGE "Не удалось включить BBR. Проверьте конфигурацию системы."
   fi
+  [[ -z "$RUN_ALL_IN_ONE" ]] && before_show_menu
 }
 
 disable_bbr() {
   check_root
   if [[ $(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null) != "bbr" ]] || [[ ! $(sysctl -n net.core.default_qdisc 2>/dev/null) =~ ^(fq|cake)$ ]]; then
     LOGD "BBR не включён."
-    before_show_menu
+    [[ -z "$RUN_ALL_IN_ONE" ]] && before_show_menu
     return
   fi
   if [[ -f /etc/sysctl.d/99-bbr-x-ui.conf ]]; then
@@ -262,6 +263,7 @@ disable_bbr() {
   else
     LOGE "Не удалось отключить BBR."
   fi
+  [[ -z "$RUN_ALL_IN_ONE" ]] && before_show_menu
 }
 
 bbr_menu() {
@@ -290,7 +292,7 @@ enable_ipv6() {
   check_root
   if ! ipv6_disabled_now; then
     LOGD "IPv6 уже включён."
-    before_show_menu
+    [[ -z "$RUN_ALL_IN_ONE" ]] && before_show_menu
     return
   fi
   rm -f /etc/sysctl.d/99-ipv6-mbt.conf
@@ -302,13 +304,14 @@ enable_ipv6() {
   else
     LOGE "Не удалось включить IPv6."
   fi
+  [[ -z "$RUN_ALL_IN_ONE" ]] && before_show_menu
 }
 
 disable_ipv6() {
   check_root
   if ipv6_disabled_now; then
     LOGD "IPv6 уже отключён."
-    before_show_menu
+    [[ -z "$RUN_ALL_IN_ONE" ]] && before_show_menu
     return
   fi
   {
@@ -323,6 +326,7 @@ disable_ipv6() {
   else
     LOGE "Не удалось отключить IPv6."
   fi
+  [[ -z "$RUN_ALL_IN_ONE" ]] && before_show_menu
 }
 
 ipv6_menu() {
@@ -355,11 +359,11 @@ install_fail2ban_ssh() {
       centos) [[ "${VERSION_ID:-}" =~ ^7 ]] && { yum install -y -q epel-release; yum -y install -q fail2ban; } || dnf -y install -q fail2ban ;;
       arch|manjaro|parch) pacman -Sy --noconfirm fail2ban ;;
       alpine) apk add fail2ban ;;
-      *) LOGE "ОС не поддерживается. Установите fail2ban вручную."; before_show_menu; return 1 ;;
+      *) LOGE "ОС не поддерживается. Установите fail2ban вручную."; [[ -z "$RUN_ALL_IN_ONE" ]] && before_show_menu; return 1 ;;
     esac
     if ! command -v fail2ban-client &>/dev/null; then
       LOGE "Установка Fail2ban не удалась."
-      before_show_menu
+      [[ -z "$RUN_ALL_IN_ONE" ]] && before_show_menu
       return 1
     fi
     LOGI "Fail2ban установлен."
@@ -380,7 +384,7 @@ install_fail2ban_ssh() {
     systemctl start fail2ban 2>/dev/null || systemctl restart fail2ban 2>/dev/null
   fi
   LOGI "Fail2ban запущен. Защита SSH от брутфорса активна."
-  before_show_menu
+  [[ -z "$RUN_ALL_IN_ONE" ]] && before_show_menu
 }
 
 f2b_menu() {
@@ -399,6 +403,31 @@ f2b_menu() {
     0) show_menu ;;
     *) LOGE "Неверный выбор."; f2b_menu ;;
   esac
+}
+
+# --- Все в одном ---
+
+run_all_in_one() {
+  check_root
+  export RUN_ALL_IN_ONE=1
+  LOGI "Все в одном: swap, контейнеры, crontab, BBR, IPv6 выкл, Fail2ban..."
+  run_swap
+  LOGI "[1/7] Swap готов."
+  run_stop_containers
+  LOGI "[2/7] Контейнеры обработаны."
+  crontab_add_reboot_restart
+  LOGI "[3/7] Автозапуск бота добавлен в crontab."
+  crontab_add_stop_containers
+  LOGI "[4/7] Остановка контейнеров после загрузки добавлена в crontab."
+  enable_bbr
+  LOGI "[5/7] BBR включён."
+  disable_ipv6
+  LOGI "[6/7] IPv6 отключён."
+  install_fail2ban_ssh
+  LOGI "[7/7] Fail2ban включён."
+  unset RUN_ALL_IN_ONE
+  LOGI "Все в одном выполнено."
+  before_show_menu
 }
 
 # --- Интерактивное меню ---
@@ -436,9 +465,10 @@ show_menu() {
     echo -e "  ${blue}6.${plain} BBR (вкл/выкл)"
     echo -e "  ${blue}7.${plain} IPv6 (вкл/выкл)"
     echo -e "  ${blue}8.${plain} Fail2ban (защита SSH)"
+    echo -e "  ${blue}99.${plain} Все в одном (swap, контейнеры, crontab, BBR, IPv6 выкл, Fail2ban)"
     echo -e "  ${blue}0.${plain} Выход"
     echo -e "${green}═══════════════════════════════════════${plain}"
-    echo -n "Выберите действие [0-8]: "
+    echo -n "Выберите действие [0-8, 99]: "
     read -r choice
     case "$choice" in
       1) run_restart; prompt_back_or_exit || exit 0 ;;
@@ -449,6 +479,7 @@ show_menu() {
       6) bbr_menu ;;
       7) ipv6_menu ;;
       8) f2b_menu ;;
+      99) run_all_in_one ;;
       0) LOGI "Выход."; exit 0 ;;
       "") ;;   # пустой ввод — показать меню снова
       *) LOGE "Неверный выбор." ;;
