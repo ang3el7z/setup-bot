@@ -12,6 +12,11 @@ blue='\033[0;34m'
 yellow='\033[0;33m'
 plain='\033[0m'
 
+# Логи
+LOGD() { echo -e "${yellow}[DEG] $* ${plain}"; }
+LOGE() { echo -e "${red}[ERR] $* ${plain}"; }
+LOGI() { echo -e "${green}[INF] $* ${plain}"; }
+
 cur_dir="$(cd "$(dirname "$0")" && pwd)"
 
 # --- Настройки ---
@@ -19,6 +24,16 @@ VPNBOT_DIR="${VPNBOT_DIR:-/root/vpnbot}"
 SWAPFILE="${SWAPFILE:-/swapfile}"
 SWAPSIZE="${SWAPSIZE:-1536M}"
 UNWANTED_CONTAINERS="${UNWANTED_CONTAINERS:-mtproto wireguard1 shadowsocks openconnect wireguard naive hysteria proxy dnstt adguard}"
+
+# ОС (для fail2ban)
+if [[ -f /etc/os-release ]]; then
+  source /etc/os-release
+  release="${ID:-unknown}"
+  os_version=$(grep "^VERSION_ID" /etc/os-release 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d '.' || echo "0")
+else
+  release="unknown"
+  os_version="0"
+fi
 
 # =============================================================================
 
@@ -32,31 +47,33 @@ usage() {
   echo -e "  ${green}-swap${plain}, ${green}-s${plain}              Создать и включить swap (1.5 GB)"
   echo -e "  ${green}-stop-unwanted-containers${plain}, ${green}-suc${plain}   Остановить ненужные Docker-контейнеры"
   echo -e "  ${green}-add-crontab-stop-containers${plain} Добавить в crontab задачу остановки контейнеров после перезагрузки"
+  echo -e "  ${green}-bbr${plain}                     Подменю BBR (вкл/выкл)"
+  echo -e "  ${green}-fail2ban${plain}, ${green}-f2b${plain}          Подменю Fail2ban (защита SSH)"
   echo -e "  ${green}-h${plain}, ${green}--help${plain}               Справка"
 }
 
 # Проверка root (для swap и docker)
 check_root() {
-  [[ $EUID -ne 0 ]] && echo -e "${red}Ошибка:${plain} эта операция требует прав root. Запустите с sudo." && exit 1
+  [[ $EUID -ne 0 ]] && LOGE "Эта операция требует прав root. Запустите с sudo." && exit 1
 }
 
 # --- Действия ---
 
 run_restart() {
-  echo -e "${blue}Перезапуск бота...${plain}"
+  LOGI "Перезапуск бота..."
   if [[ ! -d "$VPNBOT_DIR" ]]; then
-    echo -e "${red}Каталог не найден: $VPNBOT_DIR${plain}"
+    LOGE "Каталог не найден: $VPNBOT_DIR"
     exit 1
   fi
-  (cd "$VPNBOT_DIR" && make r) || { echo -e "${red}Ошибка make r${plain}"; exit 1; }
-  echo -e "${green}Готово.${plain}"
+  (cd "$VPNBOT_DIR" && make r) || { LOGE "Ошибка make r"; exit 1; }
+  LOGI "Готово."
 }
 
 run_swap() {
   check_root
-  echo -e "${blue}Настройка swap...${plain}"
+  LOGI "Настройка swap..."
   if swapon --show | grep -q "$SWAPFILE"; then
-    echo -e "${green}Swap уже активен.${plain}"
+    LOGI "Swap уже активен."
     return 0
   fi
   SWAP_MB="${SWAPSIZE%M}"
@@ -69,44 +86,174 @@ run_swap() {
   grep -qF "$SWAPFILE" /etc/fstab || echo "$SWAPFILE none swap sw 0 0" >> /etc/fstab
   sysctl vm.swappiness=10 2>/dev/null || true
   grep -qF 'vm.swappiness=10' /etc/sysctl.conf 2>/dev/null || echo 'vm.swappiness=10' >> /etc/sysctl.conf
-  echo -e "${green}Swap создан и активирован:${plain}"
+  LOGI "Swap создан и активирован:"
   swapon --show
   free -m
 }
 
 run_stop_containers() {
   check_root
-  echo -e "${blue}Остановка ненужных контейнеров...${plain}"
+  LOGI "Остановка ненужных контейнеров..."
   read -ra patterns <<< "$UNWANTED_CONTAINERS"
-  ALL_CONTAINERS=$(docker ps -a --format "{{.Names}}" 2>/dev/null) || { echo -e "${yellow}Docker недоступен или контейнеров нет.${plain}"; return 0; }
+  ALL_CONTAINERS=$(docker ps -a --format "{{.Names}}" 2>/dev/null) || { LOGD "Docker недоступен или контейнеров нет."; return 0; }
   for container in $ALL_CONTAINERS; do
     for pattern in "${patterns[@]}"; do
       if [[ "$container" == *"$pattern"* ]]; then
         STATUS=$(docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null)
         if [[ "$STATUS" == "exited" || "$STATUS" == "created" || "$STATUS" == "dead" ]]; then
-          echo -e "${yellow}Контейнер '$container' уже остановлен (статус: $STATUS).${plain}"
+          LOGD "Контейнер '$container' уже остановлен (статус: $STATUS)."
         elif [[ "$STATUS" == "running" ]]; then
-          echo -e "${blue}Останавливаю: $container${plain}"
+          LOGI "Останавливаю: $container"
           docker stop "$container" >/dev/null 2>&1
         else
-          echo -e "${yellow}Контейнер '$container' в состоянии '$STATUS', пропускаю.${plain}"
+          LOGD "Контейнер '$container' в состоянии '$STATUS', пропускаю."
         fi
         break
       fi
     done
   done
-  echo -e "${green}Ненужные контейнеры обработаны.${plain}"
+  LOGI "Ненужные контейнеры обработаны."
 }
 
 # Добавить в crontab задачу: через 5 мин после reboot — stop-unwanted-containers с логом
 run_add_crontab_stop_containers() {
   local line="@reboot (sleep 300 && cd $cur_dir && ./managerbot.sh -suc) >> /var/log/docker-cleanup.log 2>&1"
   if crontab -l 2>/dev/null | grep -qF "managerbot.sh -suc"; then
-    echo -e "${yellow}Задача уже есть в crontab.${plain}"
+    LOGD "Задача уже есть в crontab."
     return 0
   fi
   (crontab -l 2>/dev/null; echo "$line") | crontab -
-  echo -e "${green}В crontab добавлено:${plain} $line"
+  LOGI "В crontab добавлено: $line"
+}
+
+# --- BBR ---
+
+enable_bbr() {
+  check_root
+  if [[ $(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null) == "bbr" ]] && [[ $(sysctl -n net.core.default_qdisc 2>/dev/null) =~ ^(fq|cake)$ ]]; then
+    LOGI "BBR уже включён."
+    before_show_menu
+    return
+  fi
+  if [[ -d /etc/sysctl.d ]]; then
+    {
+      echo "#$(sysctl -n net.core.default_qdisc 2>/dev/null):$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)"
+      echo "net.core.default_qdisc = fq"
+      echo "net.ipv4.tcp_congestion_control = bbr"
+    } > /etc/sysctl.d/99-bbr-x-ui.conf
+    [[ -f /etc/sysctl.conf ]] && sed -i 's/^net.core.default_qdisc/# &/' /etc/sysctl.conf && sed -i 's/^net.ipv4.tcp_congestion_control/# &/' /etc/sysctl.conf
+    sysctl --system >/dev/null 2>&1
+  else
+    sed -i '/net.core.default_qdisc/d' /etc/sysctl.conf
+    sed -i '/net.ipv4.tcp_congestion_control/d' /etc/sysctl.conf
+    echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
+    echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
+    sysctl -p >/dev/null 2>&1
+  fi
+  if [[ $(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null) == "bbr" ]]; then
+    LOGI "BBR успешно включён."
+  else
+    LOGE "Не удалось включить BBR. Проверьте конфигурацию системы."
+  fi
+}
+
+disable_bbr() {
+  check_root
+  if [[ $(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null) != "bbr" ]] || [[ ! $(sysctl -n net.core.default_qdisc 2>/dev/null) =~ ^(fq|cake)$ ]]; then
+    LOGD "BBR не включён."
+    before_show_menu
+    return
+  fi
+  if [[ -f /etc/sysctl.d/99-bbr-x-ui.conf ]]; then
+    old_settings=$(head -1 /etc/sysctl.d/99-bbr-x-ui.conf | tr -d '#')
+    sysctl -w net.core.default_qdisc="${old_settings%:*}" 2>/dev/null
+    sysctl -w net.ipv4.tcp_congestion_control="${old_settings#*:}" 2>/dev/null
+    rm -f /etc/sysctl.d/99-bbr-x-ui.conf
+    sysctl --system >/dev/null 2>&1
+  else
+    [[ -f /etc/sysctl.conf ]] && sed -i 's/net.core.default_qdisc=fq/net.core.default_qdisc=pfifo_fast/' /etc/sysctl.conf && sed -i 's/net.ipv4.tcp_congestion_control=bbr/net.ipv4.tcp_congestion_control=cubic/' /etc/sysctl.conf && sysctl -p >/dev/null 2>&1
+  fi
+  if [[ $(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null) != "bbr" ]]; then
+    LOGI "BBR отключён, используется CUBIC."
+  else
+    LOGE "Не удалось отключить BBR."
+  fi
+}
+
+bbr_menu() {
+  echo ""
+  echo -e "${green}  BBR${plain}"
+  echo -e "  ${blue}1.${plain} Включить BBR"
+  echo -e "  ${blue}2.${plain} Отключить BBR"
+  echo -e "  ${blue}0.${plain} Назад в главное меню"
+  echo -n "Выберите [0-2]: "
+  read -r choice
+  case "$choice" in
+    1) enable_bbr; before_show_menu ;;
+    2) disable_bbr; before_show_menu ;;
+    0) show_menu ;;
+    *) LOGE "Неверный выбор."; bbr_menu ;;
+  esac
+}
+
+# --- Fail2ban (защита SSH от брутфорса) ---
+
+install_fail2ban_ssh() {
+  check_root
+  if ! command -v fail2ban-client &>/dev/null; then
+    LOGI "Установка Fail2ban..."
+    case "${release}" in
+      ubuntu) apt-get update -qq && apt-get install -y -qq fail2ban ;;
+      debian) apt-get update -qq && [[ "${os_version:-0}" -ge 12 ]] && apt-get install -y -qq python3-systemd 2>/dev/null; apt-get install -y -qq fail2ban ;;
+      armbian) apt-get update -qq && apt-get install -y -qq fail2ban ;;
+      fedora|amzn|virtuozzo|rhel|almalinux|rocky|ol) dnf -y install -q fail2ban ;;
+      centos) [[ "${VERSION_ID:-}" =~ ^7 ]] && { yum install -y -q epel-release; yum -y install -q fail2ban; } || dnf -y install -q fail2ban ;;
+      arch|manjaro|parch) pacman -Sy --noconfirm fail2ban ;;
+      alpine) apk add fail2ban ;;
+      *) LOGE "ОС не поддерживается. Установите fail2ban вручную."; before_show_menu; return 1 ;;
+    esac
+    if ! command -v fail2ban-client &>/dev/null; then
+      LOGE "Установка Fail2ban не удалась."
+      before_show_menu
+      return 1
+    fi
+    LOGI "Fail2ban установлен."
+  else
+    LOGD "Fail2ban уже установлен."
+  fi
+  # Включить jail для SSH (стандартный sshd)
+  if ! fail2ban-client status sshd &>/dev/null; then
+    mkdir -p /etc/fail2ban/jail.d
+    echo -e "[sshd]\nenabled = true" > /etc/fail2ban/jail.d/sshd.local
+    LOGI "Jail sshd включён."
+  fi
+  if [[ "$release" == "alpine" ]]; then
+    rc-service fail2ban start 2>/dev/null || rc-service fail2ban restart 2>/dev/null
+    rc-update add fail2ban 2>/dev/null
+  else
+    systemctl enable fail2ban 2>/dev/null
+    systemctl start fail2ban 2>/dev/null || systemctl restart fail2ban 2>/dev/null
+  fi
+  LOGI "Fail2ban запущен. Защита SSH от брутфорса активна."
+  before_show_menu
+}
+
+f2b_menu() {
+  echo ""
+  echo -e "${green}  Fail2ban — защита SSH${plain}"
+  echo -e "  ${blue}1.${plain} Установить Fail2ban (защита SSH от брутфорса)"
+  echo -e "  ${blue}2.${plain} Статус сервиса"
+  echo -e "  ${blue}3.${plain} Перезапуск Fail2ban"
+  echo -e "  ${blue}0.${plain} Назад в главное меню"
+  echo -n "Выберите [0-3]: "
+  read -r choice
+  case "$choice" in
+    1) install_fail2ban_ssh ;;
+    2) systemctl status fail2ban 2>/dev/null || rc-service fail2ban status 2>/dev/null; before_show_menu ;;
+    3) [[ "$release" == "alpine" ]] && rc-service fail2ban restart || systemctl restart fail2ban; LOGI "Fail2ban перезапущен."; before_show_menu ;;
+    0) show_menu ;;
+    *) LOGE "Неверный выбор."; f2b_menu ;;
+  esac
 }
 
 # --- Интерактивное меню ---
@@ -118,10 +265,16 @@ prompt_back_or_exit() {
   echo -n "Выберите [0/1]: "
   read -r r
   if [[ "$r" == "0" ]]; then
-    echo -e "${green}Выход.${plain}"
+    LOGI "Выход."
     return 1
   fi
   return 0
+}
+
+# Нажать Enter для возврата в меню (как в x-ui)
+before_show_menu() {
+  echo && echo -n -e "${yellow}Нажмите Enter для возврата в меню: ${plain}" && read -r temp
+  show_menu
 }
 
 show_menu() {
@@ -134,17 +287,21 @@ show_menu() {
     echo -e "  ${blue}2.${plain} Создать swap 1.5 GB"
     echo -e "  ${blue}3.${plain} Остановить ненужные Docker-контейнеры"
     echo -e "  ${blue}4.${plain} Добавить в crontab задачу остановки контейнеров после перезагрузки"
+    echo -e "  ${blue}5.${plain} BBR (вкл/выкл)"
+    echo -e "  ${blue}6.${plain} Fail2ban (защита SSH)"
     echo -e "  ${blue}0.${plain} Выход"
     echo -e "${green}═══════════════════════════════════════${plain}"
-    echo -n "Выберите действие [0-4]: "
+    echo -n "Выберите действие [0-6]: "
     read -r choice
     case "$choice" in
       1) run_restart; prompt_back_or_exit || exit 0 ;;
       2) run_swap; prompt_back_or_exit || exit 0 ;;
       3) run_stop_containers; prompt_back_or_exit || exit 0 ;;
       4) run_add_crontab_stop_containers; prompt_back_or_exit || exit 0 ;;
-      0) echo -e "${green}Выход.${plain}"; exit 0 ;;
-      *) echo -e "${red}Неверный выбор.${plain}" ;;
+      5) bbr_menu ;;
+      6) f2b_menu ;;
+      0) LOGI "Выход."; exit 0 ;;
+      *) LOGE "Неверный выбор." ;;
     esac
   done
 }
@@ -175,8 +332,14 @@ case "${cmd#--}" in
   -add-crontab-stop-containers)
     run_add_crontab_stop_containers
     ;;
+  -bbr)
+    bbr_menu
+    ;;
+  -f2b|-fail2ban)
+    f2b_menu
+    ;;
   *)
-    echo -e "${red}Неизвестная команда: $cmd${plain}"
+    LOGE "Неизвестная команда: $cmd"
     usage
     exit 1
     ;;
