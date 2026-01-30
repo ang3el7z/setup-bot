@@ -167,7 +167,7 @@ crontab_menu_reboot_restart() {
 }
 
 # --- Crontab: остановка контейнеров после загрузки ---
-CRONTAB_REBOOT_SUC="@reboot (sleep 300 && cd $cur_dir && ./mbt.sh -suc) >> /var/log/docker-cleanup.log 2>&1"
+CRONTAB_REBOOT_SUC="@reboot (sleep 300 && cd $cur_dir && ./mbt.sh -suc)"
 
 crontab_has_stop_containers() {
   crontab -l 2>/dev/null | grep -qF "mbt.sh -suc"
