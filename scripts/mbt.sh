@@ -412,9 +412,6 @@ f2b_menu() {
 # --- Sub: копировать mbt_verify_user.php и внедрить хуки в bot.php (если их ещё нет) ---
 
 run_sub() {
-  local repo_root
-  repo_root="$(cd "$(dirname "$0")/.." && pwd)"
-  local mbt_src="$repo_root/app/mbt_verify_user.php"
   local app_dir="$VPNBOT_DIR/app"
   local bot_php="$app_dir/bot.php"
   local mbt_dst="$app_dir/mbt_verify_user.php"
@@ -426,23 +423,17 @@ run_sub() {
   fi
 
   mkdir -p "$app_dir"
-  if [[ -f "$mbt_src" ]]; then
-    cp "$mbt_src" "$mbt_dst" || { LOGE "Не удалось скопировать mbt_verify_user.php"; return 1; }
-    LOGI "Скопирован: mbt_verify_user.php -> $mbt_dst"
-    [[ -f "$repo_root/app/MBT_ПОСЛЕ_ОБНОВЛЕНИЯ_bot.txt" ]] && cp "$repo_root/app/MBT_ПОСЛЕ_ОБНОВЛЕНИЯ_bot.txt" "$app_dir/" && LOGI "Скопирована памятка: MBT_ПОСЛЕ_ОБНОВЛЕНИЯ_bot.txt"
+  LOGI "Скачиваю mbt_verify_user.php: $mbt_url"
+  if command -v curl >/dev/null 2>&1; then
+    curl -sL -o "$mbt_dst" "$mbt_url" || { LOGE "Не удалось скачать mbt_verify_user.php"; return 1; }
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O "$mbt_dst" "$mbt_url" || { LOGE "Не удалось скачать mbt_verify_user.php"; return 1; }
   else
-    LOGI "Файла в репо нет — скачиваю с GitHub: $mbt_url"
-    if command -v curl >/dev/null 2>&1; then
-      curl -sL -o "$mbt_dst" "$mbt_url" || { LOGE "Не удалось скачать mbt_verify_user.php"; return 1; }
-    elif command -v wget >/dev/null 2>&1; then
-      wget -q -O "$mbt_dst" "$mbt_url" || { LOGE "Не удалось скачать mbt_verify_user.php"; return 1; }
-    else
-      LOGE "Нужен curl или wget для загрузки. Либо положите app/mbt_verify_user.php рядом со скриптом."
-      return 1
-    fi
-    [[ ! -s "$mbt_dst" ]] && { LOGE "Скачанный файл пустой."; return 1; }
-    LOGI "Скачан: mbt_verify_user.php -> $mbt_dst"
+    LOGE "Нужен curl или wget для загрузки."
+    return 1
   fi
+  [[ ! -s "$mbt_dst" ]] && { LOGE "Скачанный файл пустой."; return 1; }
+  LOGI "Готово: mbt_verify_user.php -> $mbt_dst"
 
   if grep -q "mbt_verify_user\.php" "$bot_php"; then
     LOGI "Правки MBT уже есть в bot.php, пропуск."
