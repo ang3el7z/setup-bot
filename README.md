@@ -16,4 +16,5 @@ curl -sL https://raw.githubusercontent.com/ang3el7z/setup-bot/master/install | s
 | `-bbr` | Подменю BBR (вкл/выкл) |
 | `-ipv6` | Подменю IPv6 (вкл/выкл) |
 | `-f2b`, `-fail2ban` | Подменю Fail2ban (защита SSH) |
+| `-all` | Все в одном (swap, контейнеры, crontab, BBR, IPv6 выкл, Fail2ban) |
 | `-h`, `--help` | Справка |
