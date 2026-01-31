@@ -183,17 +183,17 @@ class Bot
             $lines[] = "• Проверка: <code>status</code>";
         } elseif ($isTablet) {
             $lines[] = "📱 <b>Планшет (Android / iOS)</b>";
-            $lines[] = "• Установить sing-box: Play Store / App Store";
+            $lines[] = "• Установить sing-box: <a href=\"https://play.google.com/store/apps/details?id=io.nekohasekai.sfa\">Google Play</a> / <a href=\"https://apps.apple.com/us/app/sing-box-vt/id6673731168\">App Store</a>";
             $lines[] = "• Импорт: <a href=\"{$esc($importUrl)}\">import://sing-box</a>";
             $lines[] = "• Import → Create → Dashboard → Start";
         } elseif ($isMac) {
             $lines[] = "💻 <b>Mac</b>";
-            $lines[] = "• Установить sing-box (App Store)";
+            $lines[] = "• Установить sing-box: <a href=\"https://apps.apple.com/us/app/sing-box-vt/id6673731168\">App Store</a>";
             $lines[] = "• Импорт: <a href=\"{$esc($importUrl)}\">import://sing-box</a>";
             $lines[] = "• Import → Create → Dashboard → Start";
         } else {
             $lines[] = "📱 <b>Телефон (Android / iOS)</b>";
-            $lines[] = "• Установить sing-box: Play Store / App Store";
+            $lines[] = "• Установить sing-box: <a href=\"https://play.google.com/store/apps/details?id=io.nekohasekai.sfa\">Google Play</a> / <a href=\"https://apps.apple.com/us/app/sing-box-vt/id6673731168\">App Store</a>";
             $lines[] = "• Импорт: <a href=\"{$esc($importUrl)}\">import://sing-box</a>";
             $lines[] = "• Import → Create → Dashboard → Start";
         }
@@ -309,7 +309,7 @@ class Bot
             if (!empty($r['description']) && (stripos($r['description'], 'not modified') !== false || stripos($r['description'], 'message is the same') !== false)) {
                 return;
             }
-            $this->send($this->input['chat'], $text, 0, $keyboard, false, 'HTML', false, true);
+            $this->send($this->input['chat'], $text, 0, $keyboard, false, 'HTML', false, false, true);
         } catch (\Throwable $e) {
             $answer('Ошибка');
             $this->send($this->input['chat'], "Ошибка: " . $e->getMessage(), $this->input['message_id']);
@@ -9879,7 +9879,7 @@ DNS-over-HTTPS with IP:
         var_dump($this->request('setMyCommands', json_encode($data), 1));
     }
 
-    public function send($chat, $text, ?int $to = 0, $button = false, $reply = false, $mode = 'HTML', $disable_notification = false)
+    public function send($chat, $text, ?int $to = 0, $button = false, $reply = false, $mode = 'HTML', $disable_notification = false, $disable_web_page_preview = false)
     {
         if ($button) {
             $extra = ['inline_keyboard' => $button];
@@ -9896,11 +9896,11 @@ DNS-over-HTTPS with IP:
             $tails = $this->splitText($text, $length);
             foreach ($tails as $k => $v) {
                 $data = [
-                    'chat_id'                  => $chat,
-                    'text'                     => "$v\n",
-                    'parse_mode'               => $mode,
-                    // 'disable_web_page_preview' => true,
-                    'disable_notification'     => $disable_notification,
+                    'chat_id'                   => $chat,
+                    'text'                      => "$v\n",
+                    'parse_mode'                => $mode,
+                    'disable_notification'      => $disable_notification,
+                    'disable_web_page_preview'  => $disable_web_page_preview,
                     'reply_to_message_id'      => 0 == $k && $to > 0 ? $to : false,
                 ];
                 if ($k == array_key_last($tails)) {
@@ -9912,11 +9912,11 @@ DNS-over-HTTPS with IP:
             }
         } else {
             $data = [
-                'chat_id'                  => $chat,
-                'text'                     => $text,
-                'parse_mode'               => $mode,
-                // 'disable_web_page_preview' => true,
-                'disable_notification'     => $disable_notification,
+                'chat_id'                   => $chat,
+                'text'                      => $text,
+                'parse_mode'                => $mode,
+                'disable_notification'      => $disable_notification,
+                'disable_web_page_preview'  => $disable_web_page_preview,
                 'reply_to_message_id'      => $to,
             ];
             if (!empty($extra)) {
