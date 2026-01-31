@@ -426,147 +426,155 @@ run_sub() {
   if grep -q "you are not authorized" "$bot_php"; then
     LOGI "Заменяю комментарий в auth() на \$this->verifyUser(); ..."
     sed -i '/you are not authorized/s/.*/        $this->verifyUser();/' "$bot_php"
-  else
-    LOGD "auth() уже вызывает verifyUser или строка не найдена."
+  fi
+  if grep -q '\$this->verifyUser();' "$bot_php" && ! grep -q "verifySub" "$bot_php"; then
+    LOGI "Правка auth(): разрешаю callback /verifySub, иначе verifyUser + exit ..."
+    perl -i -0pe "s/(\\s+)\\\$this->verifyUser\\(\\);\\s+\\n\\s+exit;/\\1if (preg_match('~^\\/verifySub~', \\\$this->input['callback'] ?? '')) {\\n\\1} else {\\n\\1    \\\$this->verifyUser();\\n\\1    exit;\\n\\1}/s" "$bot_php" 2>/dev/null || true
+  fi
+  if ! grep -q "case preg_match.*verifySub" "$bot_php"; then
+    LOGI "Добавляю обработчик callback /verifySub в action() ..."
+    case_line=$(grep -n "case preg_match.*menu.*message" "$bot_php" | head -1 | cut -d: -f1)
+    if [[ -n "$case_line" ]]; then
+      {
+        head -n $((case_line - 1)) "$bot_php"
+        echo "            case preg_match('~^/verifySub(?:\s+(?P<arg>.+))?\$~', \$this->input['callback'], \$m):"
+        echo "                \$this->verifyUserCallback(\$m['arg'] ?? 'list');"
+        echo "                break;"
+        tail -n +"$case_line" "$bot_php"
+      } > "$bot_php.new" && mv "$bot_php.new" "$bot_php"
+    fi
   fi
 
   if ! grep -q "function verifyUser()" "$bot_php"; then
-    LOGI "Вставляю метод verifyUser() после auth() ..."
+    LOGI "Вставляю методы verifyUser и verifyUserCallback после auth() ..."
     cat << 'VERIFYUSER_SNIPPET_END' > "$snippet_tmp"
-    public function verifyUser(): void
+    private function verifyUserGetFoundIndexes(): array
     {
-        $esc = fn(string $s) => htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-
         $clients = $this->getXray()['inbounds'][0]['settings']['clients'] ?? [];
-
         $foundIndexes = [];
         foreach ($clients as $i => $user) {
-            if (
-                isset($user['email']) &&
-                preg_match('/\[tg_(\d+)]/i', $user['email'], $m) &&
-                (string)$m[1] === (string)$this->input['from']
-            ) {
+            if (isset($user['email']) && preg_match('/\[tg_(\d+)]/i', $user['email'], $m) && (string)$m[1] === (string)$this->input['from']) {
                 $foundIndexes[] = $i;
             }
         }
+        return $foundIndexes;
+    }
 
+    private function verifyUserConfigText(int $index): string
+    {
+        $foundIndexes = $this->verifyUserGetFoundIndexes();
+        if (!isset($foundIndexes[$index])) {
+            return '';
+        }
+        $esc = fn(string $s) => htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $clients = $this->getXray()['inbounds'][0]['settings']['clients'] ?? [];
+        $c = $clients[$foundIndexes[$index]];
+        $email = $c['email'];
+        $pac = $this->getPacConf();
+        $domain = $this->getDomain($pac['transport'] != 'Reality');
+        $scheme = empty($this->nginxGetTypeCert()) ? 'http' : 'https';
+        $hash = $this->getHashBot();
+        $siPayload = base64_encode(serialize(['h' => $hash, 't' => 'si', 's' => $c['id']]));
+        $si = "{$scheme}://{$domain}/pac{$hash}/{$siPayload}";
+        $importUrl = "{$scheme}://{$domain}/pac{$hash}?t=si&r=si&s={$c['id']}#" . rawurlencode($email);
+        $windowsUrl = "{$scheme}://{$domain}/pac{$hash}?t=si&r=w&s={$c['id']}";
+        $emailLower = strtolower($email);
+        $isOpenWrt = str_contains($emailLower, '[openwrt]');
+        $isWindows = str_contains($emailLower, '[windows]');
+        $isTablet = str_contains($emailLower, '[tablet]');
+        $isMac = str_contains($emailLower, '[mac]');
+        $cleanName = preg_replace('/^\[tg_\d+]\_?/', '', $email);
+        $textParts = ["🧾 <b>Конфиг для:</b> <code>{$esc($cleanName)}</code>"];
+        if ($isOpenWrt) {
+            $textParts[] = "📡 <b>Роутер (OpenWRT)</b>\n⚠️ Только для OpenWRT.\n1. Установите интерфейс: <a href=\"https://github.com/ang3el7z/luci-app-singbox-ui\">GitHub</a>\n2. Используйте конфиг-сервер:\n<pre><code>{$esc($si)}</code></pre>\n✅ Подходит для ручного импорта.";
+        } elseif ($isWindows) {
+            $textParts[] = "🖥 <b>Windows</b>\n⚠️ Только для Windows 10/11.\n1. Скачайте: <a href=\"{$esc($windowsUrl)}\">sing-box для Windows</a>\n2. Распакуйте в <code>C:\\serviceBot</code> ⚠️ <i>Путь только на англ.!</i>\n3. Запустите <code>install</code>, затем <code>start</code>.\n4. Проверка: <code>status</code>\n✅ Работает автоматически.";
+        } elseif ($isTablet) {
+            $textParts[] = "📱 <b>Планшет (Android / iOS)</b>\n1. Установите sing-box (Play Store / App Store).\n2. Ссылка: <a href=\"{$esc($importUrl)}\">import://sing-box</a>\n3. Import → Create → Dashboard → Start.\n✅ Готово.";
+        } elseif ($isMac) {
+            $textParts[] = "💻 <b>Mac</b>\n1. Установите sing-box (App Store).\n2. Ссылка: <a href=\"{$esc($importUrl)}\">import://sing-box</a>\n3. Import → Create → Dashboard → Start.\n✅ Готово.";
+        } else {
+            $textParts[] = "📱 <b>Телефон (Android / iOS)</b>\n1. Установите sing-box (Play Store / App Store).\n2. Ссылка: <a href=\"{$esc($importUrl)}\">import://sing-box</a>\n3. Import → Create → Dashboard → Start.\n✅ Готово.";
+        }
+        $textParts[] = "🔒 <b>Ограничения</b>\n• 1 конфиг = 1 устройство\n• Поделиться конфигом ➜ <b>бан навсегда</b>\n• Нельзя использовать на нескольких устройствах";
+        $textParts[] = "<b>⚠️ Нажмите кнопку ниже для актуальной конфигурации ⚠️</b>";
+        return implode("\n\n", $textParts);
+    }
+
+    private function verifyUserListData(): array
+    {
+        $foundIndexes = $this->verifyUserGetFoundIndexes();
+        if (empty($foundIndexes)) {
+            return ['text' => '', 'keyboard' => []];
+        }
+        $clients = $this->getXray()['inbounds'][0]['settings']['clients'] ?? [];
+        $rows = [];
+        foreach ($foundIndexes as $i => $idx) {
+            $email = $clients[$idx]['email'] ?? '';
+            $cleanName = preg_replace('/^\[tg_\d+]\_?/', '', $email) ?: "Профиль " . ($i + 1);
+            $rows[] = [['text' => $cleanName, 'callback_data' => "/verifySub $i"]];
+        }
+        return ['text' => "📋 <b>Выберите профиль:</b>", 'keyboard' => $rows];
+    }
+
+    public function verifyUser(): void
+    {
+        $foundIndexes = $this->verifyUserGetFoundIndexes();
         if (empty($foundIndexes)) {
             return;
         }
-
-        $this->send($this->input['chat'], "verifyUser: найдено совпадений: " . count($foundIndexes) . " → [" . implode(',', $foundIndexes) . "]", $this->input['message_id']);
-
-        $pac    = $this->getPacConf();
-        $domain = $this->getDomain($pac['transport'] != 'Reality');
-        $scheme = empty($this->nginxGetTypeCert()) ? 'http' : 'https';
-        $hash   = $this->getHashBot();
-
-        $messageParts = [];
-
-        foreach ($foundIndexes as $index) {
-            $c     = $clients[$index];
-            $email = $c['email'];
-
-            $siPayload = base64_encode(serialize([
-                'h' => $hash,
-                't' => 'si',
-                's' => $c['id'],
-            ]));
-            $si = "{$scheme}://{$domain}/pac{$hash}/{$siPayload}";
-
-            $importUrl  = "{$scheme}://{$domain}/pac{$hash}?t=si&r=si&s={$c['id']}#" . rawurlencode($email);
-            $windowsUrl = "{$scheme}://{$domain}/pac{$hash}?t=si&r=w&s={$c['id']}";
-
-            $emailLower = strtolower($email);
-            $isOpenWrt  = str_contains($emailLower, '[openwrt]');
-            $isWindows  = str_contains($emailLower, '[windows]');
-            $isTablet   = str_contains($emailLower, '[tablet]');
-            $isMac      = str_contains($emailLower, '[mac]');
-
-            $textParts = [];
-
-            $cleanName = preg_replace('/^\[tg_\d+]\_?/', '', $email);
-            $textParts[] = "🧾 <b>Конфиг для:</b> <code>{$esc($cleanName)}</code>";
-
-            if ($isOpenWrt) {
-                $textParts[] =
-                    "📡 <b>Роутер (OpenWRT)</b>\n"
-                    . "⚠️ Только для OpenWRT.\n"
-                    . "1. Установите интерфейс: <a href=\"https://github.com/ang3el7z/luci-app-singbox-ui\">GitHub</a>\n"
-                    . "2. Используйте следующий конфиг-сервер:\n"
-                    . "<pre><code>{$esc($si)}</code></pre>\n"
-                    . "✅ Подходит для ручного импорта.";
-            } elseif ($isWindows) {
-                $textParts[] =
-                    "🖥 <b>Windows</b>\n"
-                    . "⚠️ Только для Windows 10/11.\n"
-                    . "1. Скачайте клиент: <a href=\"{$esc($windowsUrl)}\">sing-box для Windows</a>\n"
-                    . "2. Распакуйте, например, в <code>C:\\serviceBot</code> ⚠️ <i>Имя пути только на англ.!</i>\n"
-                    . "3. Запустите <code>install</code>, затем <code>start</code>.\n"
-                    . "4. Проверка подключения: выполните <code>status</code>\n"
-                    . "✅ Работает автоматически, включая при перезагрузке.";
-            } elseif ($isTablet) {
-                $textParts[] =
-                    "📱 <b>Планшет (Android / iOS)</b>\n"
-                    . "⚠️ Только для Android / iOS.\n"
-                    . "1. Установите приложение <b>sing-box</b>:\n"
-                    . "• <a href=\"https://play.google.com/store/apps/details?id=io.nekohasekai.sfa&hl=ru&pli=1\">Play Store</a>\n"
-                    . "• <a href=\"https://apps.apple.com/ru/app/sing-box-vt/id6673731168?l=en-ru\">App Store</a>\n"
-                    . "2. Перейдите по ссылке: <a href=\"{$esc($importUrl)}\">import://sing-box</a>\n"
-                    . "3. Нажмите <b>Import</b> → <b>Create</b>.\n"
-                    . "4. Перейдите в <b>Dashboard</b> и нажмите <b>Start</b>.\n"
-                    . "✅ Всё готово для использования.";
-            } elseif ($isMac) {
-                $textParts[] =
-                    "💻 <b>Mac</b>\n"
-                    . "1. Установите приложение <b>sing-box</b>\n"
-                    . "• <a href=\"https://apps.apple.com/ru/app/sing-box-vt/id6673731168?l=en-ru\">App Store</a>\n"
-                    . "2. Перейдите по ссылке: <a href=\"{$esc($importUrl)}\">import://sing-box</a>\n"
-                    . "3. Нажмите <b>Import</b> → <b>Create</b>.\n"
-                    . "4. Перейдите в <b>Dashboard</b> и нажмите <b>Start</b>.\n"
-                    . "✅ Всё готово для использования.";
-            } else {
-                $textParts[] =
-                    "📱 <b>Телефон (Android / iOS)</b>\n"
-                    . "1. Установите приложение <b>sing-box</b>:\n"
-                    . "• <a href=\"https://play.google.com/store/apps/details?id=io.nekohasekai.sfa&hl=ru&pli=1\">Play Store</a>\n"
-                    . "• <a href=\"https://apps.apple.com/ru/app/sing-box-vt/id6673731168?l=en-ru\">App Store</a>\n"
-                    . "2. Перейдите по ссылке: <a href=\"{$esc($importUrl)}\">import://sing-box</a>\n"
-                    . "3. Нажмите <b>Import</b> → <b>Create</b>.\n"
-                    . "4. Перейдите в <b>Dashboard</b> и нажмите <b>Start</b>.\n"
-                    . "✅ Всё готово для использования.";
-            }
-
-            $textParts[] = "🔒 <b>Ограничения</b>\n"
-                . "• 1 конфиг = 1 устройство\n"
-                . "• Попытка поделиться конфигом с посторонними человеком ➜ <b>бан навсегда</b>\n"
-                . "• Нельзя использовать одновременно на несколько устройств";
-
-            $messageParts[] = implode("\n\n", $textParts);
-        }
-
-        $messageParts[] = "<b>⚠️ Перед использованием обязательно нажмите кнопку ниже для получения актуальной конфигурации ⚠️</b>";
-
-        $keyboard = [
-            [
-                ['text' => "🔄 Обновить", 'callback_data' => "/menu"],
-            ],
-        ];
-
         try {
-            $this->send(
-                $this->input['chat'],
-                implode("\n\n———————————————\n\n", $messageParts),
-                $this->input['message_id'],
-                $keyboard,
-                false,
-                'HTML',
-                false,
-                true
-            );
+            if (count($foundIndexes) === 1) {
+                $text = $this->verifyUserConfigText(0) . "\n\n<b>⚠️ Нажмите «Обновить» для актуальной конфигурации ⚠️</b>";
+                $keyboard = [[['text' => "🔄 Обновить", 'callback_data' => '/verifySub refresh']]];
+                $this->send($this->input['chat'], $text, 0, $keyboard, false, 'HTML', false, true);
+            } else {
+                $list = $this->verifyUserListData();
+                $this->send($this->input['chat'], $list['text'], 0, $list['keyboard'], false, 'HTML', false, true);
+            }
         } catch (\Throwable $e) {
-            $this->send($this->input['chat'], "verifyUser: ошибка отправки: " . $e->getMessage(), $this->input['message_id']);
+            $this->send($this->input['chat'], "verifyUser: " . $e->getMessage(), $this->input['message_id']);
         }
+    }
+
+    public function verifyUserCallback(?string $arg): void
+    {
+        $foundIndexes = $this->verifyUserGetFoundIndexes();
+        if (empty($foundIndexes)) {
+            $this->answer($this->input['callback_id'], 'Нет конфигов.');
+            return;
+        }
+        $chat = $this->input['chat'];
+        $messageId = $this->input['message_id'];
+        $arg = trim((string)$arg);
+        if ($arg === 'list' || $arg === '') {
+            $list = $this->verifyUserListData();
+            $this->update($chat, $messageId, $list['text'], $list['keyboard']);
+            $this->answer($this->input['callback_id']);
+            return;
+        }
+        if (preg_match('/^refresh(?:\s+(\d+))?$/', $arg, $m)) {
+            $index = isset($m[1]) ? (int)$m[1] : 0;
+            if (!isset($foundIndexes[$index])) {
+                $index = 0;
+            }
+        } elseif (ctype_digit($arg)) {
+            $index = (int)$arg;
+            if (!isset($foundIndexes[$index])) {
+                $index = 0;
+            }
+        } else {
+            return;
+        }
+        $text = $this->verifyUserConfigText($index) . "\n\n<b>⚠️ Нажмите «Обновить» для актуальной конфигурации ⚠️</b>";
+        $keyboard = [];
+        if (count($foundIndexes) > 1) {
+            $keyboard[] = [['text' => "← Назад", 'callback_data' => '/verifySub list'], ['text' => "🔄 Обновить", 'callback_data' => "/verifySub refresh $index"]];
+        } else {
+            $keyboard[] = [['text' => "🔄 Обновить", 'callback_data' => '/verifySub refresh']];
+        }
+        $this->update($chat, $messageId, $text, $keyboard);
+        $this->answer($this->input['callback_id']);
     }
 VERIFYUSER_SNIPPET_END
     local auth_line next_func_line
