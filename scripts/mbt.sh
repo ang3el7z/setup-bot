@@ -450,24 +450,27 @@ run_sub() {
     return 0
   fi
 
-  # Патч 1: auth() — блок для не-админа (подписка вместо выхода)
+  # Патч 1: auth() — вставить блок подписки перед exit для не-админа
   local auth_patched=0
   if grep -q 'elseif.*!in_array.*input.*from.*admin' "$bot_php"; then
-    awk '
+    awk -v sq="'" '
       /elseif[[:space:]]*\([[:space:]]*!in_array\(.*admin.*\).*\{[[:space:]]*$/ {
+        in_else=1
         print
-        getline
-        while ($0 !~ /^\s*\}\s*$/) { if (getline <= 0) break }
-        print "            // [MBT] Подписка: callback /verifySub обрабатывает action(); иначе — показываем подписку и выходим."
-        print "            if (preg_match('\''~^/verifySub~'\'', \\$this->input['\''callback'\''] ?? '\'''\'')) {"
-        print "                return;"
-        print "            }"
-        print "            require_once __DIR__ . '\''/mbt_verify_user.php'\'';"
-        print "            mbt_verify_user_show(\\$this);"
-        print "            exit;"
-        print "        }"
         next
       }
+      in_else && /exit[[:space:]]*;/ {
+        print "            // [MBT] Подписка: callback /verifySub обрабатывает action(); иначе — показываем подписку и выходим."
+        print "            if (preg_match(" sq "~^/verifySub~" sq ", $this->input[" sq "callback" sq "] ?? " sq sq ")) {"
+        print "                return;"
+        print "            }"
+        print "            require_once __DIR__ . " sq "/mbt_verify_user.php" sq ";"
+        print "            mbt_verify_user_show($this);"
+        print "            exit;"
+        in_else=0
+        next
+      }
+      in_else && /^\s*\}\s*$/ { in_else=0 }
       { print }
     ' "$bot_php" > "$bot_php.awked" 2>/dev/null && mv "$bot_php.awked" "$bot_php" && auth_patched=1
   fi
@@ -480,7 +483,7 @@ run_sub() {
   # Патч 2: action() — первый case для /verifySub
   if ! grep -q "verifySub.*mbt_verify_user_callback" "$bot_php"; then
     local case_line
-    case_line=$(grep -n "switch (true)" "$bot_php" | head -1 | cut -d: -f1)
+    case_line=$(grep -nE "switch[[:space:]]*\([[:space:]]*true[[:space:]]*\)" "$bot_php" | head -1 | cut -d: -f1)
     if [[ -n "$case_line" ]]; then
       local insert_line=$((case_line + 1))
       {
