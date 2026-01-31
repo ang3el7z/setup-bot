@@ -419,7 +419,7 @@ run_sub() {
     return 1
   fi
   mkdir -p "$app_dir"
-  LOGI "Используется bot.php: $bot_php. Перезапустите бота при необходимости (п. 1)."
+  LOGI "Используется bot.php: $bot_php."
 }
 
 # --- Все в одном ---
