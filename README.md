@@ -4,6 +4,12 @@
 curl -sL https://raw.githubusercontent.com/ang3el7z/setup-bot/master/install | sudo bash
 ```
 
+Параметры передаются в `mbt`: добавь `-s --` после `bash` и укажи команду (установка + запуск с этой командой):
+
+```shell
+curl -sL https://raw.githubusercontent.com/ang3el7z/setup-bot/master/install | sudo bash -s -- -all
+```
+
 ## Параметры
 
 | Параметр | Описание |

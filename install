@@ -1,5 +1,6 @@
 #!/bin/bash
-# Install: curl -sL https://raw.githubusercontent.com/ang3el7z/setup-bot/master/install | sudo bash
+# Install: curl -sL .../install | sudo bash
+# With params (passed to mbt): curl -sL .../install | sudo bash -s -- -all
 set -e
 wget -qO /usr/local/bin/mbt https://raw.githubusercontent.com/ang3el7z/setup-bot/master/scripts/mbt.sh
 chmod +x /usr/local/bin/mbt
