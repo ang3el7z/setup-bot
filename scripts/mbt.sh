@@ -427,9 +427,22 @@ run_sub() {
     LOGI "Заменяю комментарий в auth() на \$this->verifyUser(); ..."
     sed -i '/you are not authorized/s/.*/        $this->verifyUser();/' "$bot_php"
   fi
-  if grep -q '\$this->verifyUser();' "$bot_php" && ! grep -q "verifySub" "$bot_php"; then
-    LOGI "Правка auth(): разрешаю callback /verifySub, иначе verifyUser + exit ..."
-    perl -i -0pe "s/(\\s+)\\\$this->verifyUser\\(\\);\\s+\\n\\s+exit;/\\1if (preg_match('~^\\/verifySub~', \\\$this->input['callback'] ?? '')) {\\n\\1} else {\\n\\1    \\\$this->verifyUser();\\n\\1    exit;\\n\\1}/s" "$bot_php" 2>/dev/null || true
+  if grep -q '\$this->verifyUser();' "$bot_php" && ! grep -q "preg_match.*verifySub" "$bot_php"; then
+    LOGI "Правка auth(): разрешаю callback /verifySub (иначе при нажатии кнопок шло бы новое сообщение) ..."
+    awk '
+      /^\s+\$this->verifyUser\(\);?\s*$/ {
+        if (match($0, /^[ \t]+/)) { sp = substr($0, RSTART, RLENGTH) } else { sp = "        " }
+        print sp "if (preg_match('\''~^/verifySub~'\'', $this->input['\''callback'\''] ?? '\'''\'')) {"
+        print sp "} else {"
+        print sp "    $this->verifyUser();"
+        print sp "    exit;"
+        print sp "}"
+        done = 1
+        next
+      }
+      done && /^\s+exit;\s*$/ { done = 0; next }
+      { print }
+    ' "$bot_php" > "$bot_php.awked" && mv "$bot_php.awked" "$bot_php"
   fi
   if ! grep -q "case preg_match.*verifySub" "$bot_php"; then
     LOGI "Добавляю обработчик callback /verifySub в action() ..."
