@@ -470,7 +470,7 @@ run_sub() {
   if [[ "$auth_patched" -eq 1 ]]; then
     LOGI "Правка auth() внесена."
   else
-    LOGI "auth(): блок не-админа не найден или формат другой — внесите правку вручную (см. app/MBT_ПОСЛЕ_ОБНОВЛЕНИЯ_bot.txt)."
+    LOGI "auth(): блок не-админа не найден или формат другой — внесите правку вручную: https://github.com/ang3el7z/mbt/blob/main/app/MBT_%D0%9F%D0%9E%D0%A1%D0%9B%D0%95_%D0%9E%D0%91%D0%9D%D0%9E%D0%92%D0%9B%D0%95%D0%9D%D0%98%D0%AF_bot.md"
   fi
 
   # Патч 2: action() — первый case для /verifySub
@@ -489,7 +489,7 @@ run_sub() {
         tail -n +"$insert_line" "$bot_php"
       } > "$bot_php.new" 2>/dev/null && mv "$bot_php.new" "$bot_php" && LOGI "Правка action() (case /verifySub) внесена."
     else
-      LOGI "action(): switch (true) не найден — внесите правку вручную (см. app/MBT_ПОСЛЕ_ОБНОВЛЕНИЯ_bot.txt)."
+      LOGI "action(): switch (true) не найден — внесите правку вручную: https://github.com/ang3el7z/mbt/blob/main/app/MBT_%D0%9F%D0%9E%D0%A1%D0%9B%D0%95_%D0%9E%D0%91%D0%9D%D0%9E%D0%92%D0%9B%D0%95%D0%9D%D0%98%D0%AF_bot.md"
     fi
   fi
 
