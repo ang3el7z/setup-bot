@@ -312,19 +312,19 @@ get_tz_list() {
 10|Asia/Vladivostok|Владивосток (UTC+10)
 11|Asia/Magadan|Магадан (UTC+11)
 12|Asia/Kamchatka|Камчатка (UTC+12)
-13|UTC|UTC
-14|Europe/London|Лондон
-15|Europe/Berlin|Берлин
-16|Europe/Istanbul|Стамбул
-17|Asia/Dubai|Дубай
-18|Asia/Almaty|Алматы
-19|Asia/Tashkent|Ташкент
-20|Asia/Bangkok|Бангкок
-21|Asia/Singapore|Сингапур
-22|Asia/Shanghai|Шанхай
-23|Asia/Tokyo|Токио
-24|America/New_York|Нью-Йорк
-25|America/Los_Angeles|Лос-Анджелес
+13|UTC|UTC (UTC+0)
+14|Europe/London|Лондон (UTC+0/+1)
+15|Europe/Berlin|Берлин (UTC+1/+2)
+16|Europe/Istanbul|Стамбул (UTC+3)
+17|Asia/Dubai|Дубай (UTC+4)
+18|Asia/Almaty|Алматы (UTC+6)
+19|Asia/Tashkent|Ташкент (UTC+5)
+20|Asia/Bangkok|Бангкок (UTC+7)
+21|Asia/Singapore|Сингапур (UTC+8)
+22|Asia/Shanghai|Шанхай (UTC+8)
+23|Asia/Tokyo|Токио (UTC+9)
+24|America/New_York|Нью-Йорк (UTC-5/-4)
+25|America/Los_Angeles|Лос-Анджелес (UTC-8/-7)
 TZLIST
 }
 
