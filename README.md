@@ -10,6 +10,8 @@ curl -sL https://raw.githubusercontent.com/ang3el7z/mbt/master/install | sudo ba
 curl -sL https://raw.githubusercontent.com/ang3el7z/mbt/master/install | sudo bash -s -- -all
 ```
 
+После установки можно вызывать `mbt` напрямую: интерактивное меню — просто `mbt`, нужная команда — `mbt` и параметр, например `mbt -bbr`, `mbt -all`.
+
 ## Параметры
 
 | Параметр | Описание |
