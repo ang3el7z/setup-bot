@@ -812,21 +812,27 @@ run_all_in_one() {
   export RUN_ALL_IN_ONE=1
   LOGI "Все в одном (пресет контейнеров: $preset): swap, контейнеры, crontab, BBR, IPv6 выкл, Fail2ban..."
   run_swap
-  LOGI "[1/8] Swap готов."
+  LOGI "[1/9] Swap готов."
   run_stop_containers "$preset"
-  LOGI "[2/8] Контейнеры обработаны (пресет: $preset)."
+  LOGI "[2/9] Контейнеры обработаны (пресет: $preset)."
   crontab_add_reboot_restart
-  LOGI "[3/8] Автозапуск бота добавлен в crontab."
+  LOGI "[3/9] Автозапуск бота добавлен в crontab."
   crontab_add_stop_containers "$preset"
-  LOGI "[4/8] Остановка контейнеров после загрузки добавлена в crontab (пресет: $preset)."
+  LOGI "[4/9] Остановка контейнеров после загрузки добавлена в crontab (пресет: $preset)."
   enable_bbr
-  LOGI "[5/8] BBR включён."
+  LOGI "[5/9] BBR включён."
   run_zram_enable
-  LOGI "[6/8] Zram включён."
+  LOGI "[6/9] Zram включён."
   disable_ipv6
-  LOGI "[7/8] IPv6 отключён."
+  LOGI "[7/9] IPv6 отключён."
   install_fail2ban_ssh
-  LOGI "[8/8] Fail2ban включён."
+  LOGI "[8/9] Fail2ban включён."
+  if [[ -d "$VPNBOT_DIR" ]]; then
+    run_set_timezone "Europe/Moscow"
+    LOGI "[9/9] Часовой пояс Москва (TZ=Europe/Moscow) записан в override.env."
+  else
+    LOGD "Каталог бота не найден, пропуск часового пояса."
+  fi
   unset RUN_ALL_IN_ONE
   LOGI "Все в одном выполнено."
   before_show_menu
