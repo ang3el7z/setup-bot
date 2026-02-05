@@ -30,4 +30,3 @@ curl -sL https://raw.githubusercontent.com/ang3el7z/mbt/master/install | sudo ba
 | `-all-not` [1\|2] | Отменить -all. Пресет запуска контейнеров 1 или 2; по умолчанию 2. Примеры: `-all-not`, `-all-not 1` |
 | `-h`, `--help` | Справка |
 
-В меню пункт «Все в одном» — подменю: включить пресет 1 или 2, либо выключить (откат `-all`).
