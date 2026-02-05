@@ -1008,10 +1008,38 @@ case "${cmd#--}" in
     tz_menu
     ;;
   -all)
-    run_all_in_one "${2:-no-adguard}"
+    if [[ -z "${2:-}" ]] && [[ -t 0 ]]; then
+      echo ""
+      echo -e "${green}  Все в одном — выбор пресета${plain}"
+      echo -e "  ${blue}1.${plain} Пресет 1 (контейнеры с adguard)"
+      echo -e "  ${blue}2.${plain} Пресет 2 (контейнеры без adguard, по умолчанию)"
+      echo -n "Выберите пресет [1/2, по умолчанию 2]: "
+      read -r preset_choice
+      case "${preset_choice:-2}" in
+        1) run_all_in_one "all" ;;
+        2) run_all_in_one "no-adguard" ;;
+        *) LOGE "Неверный выбор, используется пресет 2."; run_all_in_one "no-adguard" ;;
+      esac
+    else
+      run_all_in_one "${2:-no-adguard}"
+    fi
     ;;
   -all-not)
-    run_all_not "${2:-no-adguard}"
+    if [[ -z "${2:-}" ]] && [[ -t 0 ]]; then
+      echo ""
+      echo -e "${green}  Отмена «все в одном» — выбор пресета запуска контейнеров${plain}"
+      echo -e "  ${blue}1.${plain} Пресет 1 (с adguard)"
+      echo -e "  ${blue}2.${plain} Пресет 2 (без adguard, по умолчанию)"
+      echo -n "Выберите пресет [1/2, по умолчанию 2]: "
+      read -r preset_choice
+      case "${preset_choice:-2}" in
+        1) run_all_not "all" ;;
+        2) run_all_not "no-adguard" ;;
+        *) LOGE "Неверный выбор, используется пресет 2."; run_all_not "no-adguard" ;;
+      esac
+    else
+      run_all_not "${2:-no-adguard}"
+    fi
     ;;
   *)
     LOGE "Неизвестная команда: $cmd"
