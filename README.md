@@ -18,7 +18,7 @@ curl -sL https://raw.githubusercontent.com/ang3el7z/mbt/master/install | sudo ba
 |----------|----------|
 | `-r`, `-restart` | Перезапуск бота (make r) |
 | `-s`, `-swap` | Подменю Swap (вкл/выкл) (1.5 GB) |
-| `-suc`, `-stop-unwanted-containers` + опционально `1` или `2` | Остановить ненужные Docker-контейнеры. Примеры: `-suc`, `-suc 1`, `-suc 2`, `-stop-unwanted-containers 1`. Пресет 1 — с adguard, 2 — без adguard; без аргумента — пресет 2 |
+| `-suc`, `-stop-unwanted-containers` + опционально `1` или `2` | Остановить контейнеры по списку. В меню п.3 — также запуск контейнеров (пресет 1 или 2). Примеры: `-suc`, `-suc 1`, `-suc 2`. Без аргумента — пресет 2 |
 | `-crontab-r`, `-crontab-reboot` | Добавить в crontab автоперезапуск бота при загрузке |
 | `-crontab-suc`, `-crontab-stop-unwanted-containers` + опционально `1` или `2` | Добавить в crontab остановку контейнеров. Примеры: `-crontab-suc`, `-crontab-suc 2`, `-crontab-stop-unwanted-containers 1`. Без аргумента — пресет 2 |
 | `-bbr` | Подменю BBR (вкл/выкл) |
@@ -26,8 +26,8 @@ curl -sL https://raw.githubusercontent.com/ang3el7z/mbt/master/install | sudo ba
 | `-f2b`, `-fail2ban` | Подменю Fail2ban (защита SSH) |
 | `-tz`, `-timezone` | Выбор часового пояса (TZ в override.env для бота) |
 | `-sub` | Подписка: mbt_verify_user.php + правки в bot.php (если нет) |
-| `-all` | Все в одном (swap, контейнеры, crontab, BBR, IPv6 выкл, Fail2ban) |
-| `-all-not` | Отменить всё, что сделал `-all` (crontab, BBR, IPv6, swap, Fail2ban) |
+| `-all` [1\|2] | Все в одном. Пресет контейнеров: 1 (с adguard) или 2 (без adguard); по умолчанию 2. Примеры: `-all`, `-all 1`, `-all 2` |
+| `-all-not` [1\|2] | Отменить -all. Пресет запуска контейнеров 1 или 2; по умолчанию 2. Примеры: `-all-not`, `-all-not 1` |
 | `-h`, `--help` | Справка |
 
-В интерактивном меню пункт «Все в одном» открывает подменю: включить или выключить (откат `-all`).
+В меню пункт «Все в одном» — подменю: включить пресет 1 или 2, либо выключить (откат `-all`).

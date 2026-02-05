@@ -15,8 +15,8 @@
 #   -f2b, -fail2ban          Подменю Fail2ban (защита SSH)
 #   -tz, -timezone           Выбор часового пояса (TZ в override.env)
 #   -sub                     Копировать mbt_verify_user.php и внедрить хуки в bot.php (если их нет)
-#   -all                     Все в одном (swap, контейнеры, crontab, BBR, IPv6 выкл, Fail2ban)
-#   -all-not                 Отменить всё, что сделал -all (crontab, BBR, IPv6, swap, Fail2ban)
+#   -all [1|2]               Все в одном; пресет контейнеров 1 (с adguard) или 2 (без adguard), по умолчанию 2
+#   -all-not [1|2]           Отменить -all; пресет запуска контейнеров 1 или 2, по умолчанию 2
 #   -h, --help               Справка
 # =============================================================================
 
@@ -71,8 +71,8 @@ usage() {
   echo -e "  ${green}-fail2ban${plain}, ${green}-f2b${plain}          Подменю Fail2ban (защита SSH)"
   echo -e "  ${green}-tz${plain}, ${green}-timezone${plain}           Выбор часового пояса (TZ в override.env)"
   echo -e "  ${green}-sub${plain}                     Копировать mbt_verify_user.php и внедрить хуки в bot.php"
-  echo -e "  ${green}-all${plain}                     Все в одном (swap, контейнеры, crontab, BBR, IPv6 выкл, Fail2ban)"
-  echo -e "  ${green}-all-not${plain}                 Отменить всё, что сделал -all"
+  echo -e "  ${green}-all${plain} [1|2]               Все в одном (пресет контейнеров: 1 = с adguard, 2 = без adguard; по умолчанию 2)"
+  echo -e "  ${green}-all-not${plain} [1|2]           Отменить -all (пресет запуска контейнеров 1 или 2; по умолчанию 2)"
   echo -e "  ${green}-h${plain}, ${green}--help${plain}               Справка"
   echo ""
   echo "Пресеты остановки контейнеров: 1 (с adguard), 2 (без adguard). По умолчанию — пресет 2. Переменная SUC_PRESET=all|no-adguard."
@@ -210,20 +210,55 @@ run_stop_containers() {
   LOGI "Контейнеры по списку обработаны."
 }
 
-# Подменю: выбор пресета и остановка контейнеров (пресет 1 = с adguard, пресет 2 = без adguard)
+# Запустить контейнеры по тому же списку (пресет 1 или 2). Запускаются только остановленные.
+run_start_containers() {
+  check_root
+  local preset
+  preset=$(normalize_suc_preset "${1:-$SUC_PRESET}")
+  local list
+  list=$(get_suc_list "$preset")
+  local desc
+  desc=$(suc_list_description "$preset")
+  LOGI "Запуск контейнеров по списку: $desc"
+  read -ra patterns <<< "$list"
+  ALL_CONTAINERS=$(docker ps -a --format "{{.Names}}" 2>/dev/null) || { LOGD "Docker недоступен или контейнеров нет."; return 0; }
+  for container in $ALL_CONTAINERS; do
+    for pattern in "${patterns[@]}"; do
+      if [[ "$container" == *"$pattern"* ]]; then
+        STATUS=$(docker inspect -f '{{.State.Status}}' "$container" 2>/dev/null)
+        if [[ "$STATUS" == "running" ]]; then
+          LOGD "Контейнер '$container' уже запущен."
+        elif [[ "$STATUS" == "exited" || "$STATUS" == "created" || "$STATUS" == "dead" ]]; then
+          LOGI "Запускаю: $container"
+          docker start "$container" >/dev/null 2>&1
+        else
+          LOGD "Контейнер '$container' в состоянии '$STATUS', пропускаю."
+        fi
+        break
+      fi
+    done
+  done
+  LOGI "Контейнеры по списку обработаны."
+}
+
+# Подменю: остановка или запуск контейнеров (пресет 1 = с adguard, пресет 2 = без adguard)
 suc_menu_stop_containers() {
   echo ""
-  echo -e "${green}  Остановить ненужные Docker-контейнеры${plain}"
+  echo -e "${green}  Docker-контейнеры по списку (остановить / запустить)${plain}"
   echo -e "  Пресет 1: mtproto, wireguard1, shadowsocks, openconnect, wireguard, naive, hysteria, proxy, dnstt, adguard"
   echo -e "  Пресет 2: mtproto, wireguard1, shadowsocks, openconnect, wireguard, naive, hysteria, proxy, dnstt"
-  echo -e "  ${blue}1.${plain} Пресет 1 (с adguard)"
-  echo -e "  ${blue}2.${plain} Пресет 2 (без adguard)"
+  echo -e "  ${blue}1.${plain} Остановить — пресет 1 (с adguard)"
+  echo -e "  ${blue}2.${plain} Остановить — пресет 2 (без adguard)"
+  echo -e "  ${blue}3.${plain} Запустить — пресет 1 (с adguard)"
+  echo -e "  ${blue}4.${plain} Запустить — пресет 2 (без adguard)"
   echo -e "  ${blue}0.${plain} Назад"
-  echo -n "Выберите [0-2]: "
+  echo -n "Выберите [0-4]: "
   read -r choice
   case "$choice" in
     1) run_stop_containers "all"; prompt_back_or_exit || exit 0 ;;
     2) run_stop_containers "no-adguard"; prompt_back_or_exit || exit 0 ;;
+    3) run_start_containers "all"; prompt_back_or_exit || exit 0 ;;
+    4) run_start_containers "no-adguard"; prompt_back_or_exit || exit 0 ;;
     0) show_menu ;;
     *) LOGE "Неверный выбор."; suc_menu_stop_containers ;;
   esac
@@ -700,19 +735,21 @@ run_sub() {
 }
 
 # --- Все в одном ---
-
+# Пресет для контейнеров: 1 = с adguard, 2 = без adguard. По умолчанию 2.
 run_all_in_one() {
   check_root
+  local preset
+  preset=$(normalize_suc_preset "${1:-no-adguard}")
   export RUN_ALL_IN_ONE=1
-  LOGI "Все в одном: swap, контейнеры, crontab, BBR, IPv6 выкл, Fail2ban..."
+  LOGI "Все в одном (пресет контейнеров: $preset): swap, контейнеры, crontab, BBR, IPv6 выкл, Fail2ban..."
   run_swap
   LOGI "[1/7] Swap готов."
-  run_stop_containers
-  LOGI "[2/7] Контейнеры обработаны."
+  run_stop_containers "$preset"
+  LOGI "[2/7] Контейнеры обработаны (пресет: $preset)."
   crontab_add_reboot_restart
   LOGI "[3/7] Автозапуск бота добавлен в crontab."
-  crontab_add_stop_containers
-  LOGI "[4/7] Остановка контейнеров после загрузки добавлена в crontab."
+  crontab_add_stop_containers "$preset"
+  LOGI "[4/7] Остановка контейнеров после загрузки добавлена в crontab (пресет: $preset)."
   enable_bbr
   LOGI "[5/7] BBR включён."
   disable_ipv6
@@ -724,21 +761,25 @@ run_all_in_one() {
   before_show_menu
 }
 
-# Отменить всё, что сделал -all: crontab, BBR, IPv6, swap, Fail2ban (остановить и отключить сервис).
+# Отменить всё, что сделал -all. Пресет — какие контейнеры запускать (1 или 2), по умолчанию 2.
 run_all_not() {
   check_root
+  local preset
+  preset=$(normalize_suc_preset "${1:-no-adguard}")
   export RUN_ALL_IN_ONE=1
-  LOGI "Отмена «все в одном»: crontab, BBR, IPv6, swap, Fail2ban..."
+  LOGI "Отмена «все в одном» (запуск контейнеров пресет $preset): контейнеры, crontab, BBR, IPv6, swap, Fail2ban..."
+  run_start_containers "$preset"
+  LOGI "[1/6] Контейнеры по списку (пресет: $preset) запущены."
   crontab_remove_reboot_restart
-  LOGI "[1/5] Автоперезапуск бота удалён из crontab."
+  LOGI "[2/6] Автоперезапуск бота удалён из crontab."
   crontab_remove_stop_containers
-  LOGI "[2/5] Остановка контейнеров после загрузки удалена из crontab."
+  LOGI "[3/6] Остановка контейнеров после загрузки удалена из crontab."
   disable_bbr
-  LOGI "[3/5] BBR отключён."
+  LOGI "[4/6] BBR отключён."
   enable_ipv6
-  LOGI "[4/5] IPv6 включён."
+  LOGI "[5/6] IPv6 включён."
   run_remove_swap
-  LOGI "[5/5] Swap отключён."
+  LOGI "[6/6] Swap отключён."
   if command -v fail2ban-client &>/dev/null; then
     if [[ "$release" == "alpine" ]]; then
       rc-service fail2ban stop 2>/dev/null; rc-update del fail2ban 2>/dev/null
@@ -754,18 +795,21 @@ run_all_not() {
   before_show_menu
 }
 
-# Подменю «Все в одном»: включить или выключить.
+# Подменю «Все в одном»: включить (пресет 1 или 2) или выключить.
 all_menu() {
   echo ""
   echo -e "${green}  Все в одном${plain}"
-  echo -e "  ${blue}1.${plain} Включить (swap, контейнеры, crontab, BBR, IPv6 выкл, Fail2ban)"
-  echo -e "  ${blue}2.${plain} Выключить (отменить всё, что сделал «Включить»)"
+  echo -e "  Пресет контейнеров: 1 = с adguard, 2 = без adguard"
+  echo -e "  ${blue}1.${plain} Включить — пресет 1 (контейнеры с adguard)"
+  echo -e "  ${blue}2.${plain} Включить — пресет 2 (контейнеры без adguard)"
+  echo -e "  ${blue}3.${plain} Выключить (запустить контейнеры пресета 2, откат остального)"
   echo -e "  ${blue}0.${plain} Назад"
-  echo -n "Выберите [0-2]: "
+  echo -n "Выберите [0-3]: "
   read -r choice
   case "$choice" in
-    1) run_all_in_one ;;
-    2) run_all_not ;;
+    1) run_all_in_one "all" ;;
+    2) run_all_in_one "no-adguard" ;;
+    3) run_all_not "no-adguard" ;;
     0) show_menu ;;
     *) LOGE "Неверный выбор."; all_menu ;;
   esac
@@ -800,7 +844,7 @@ show_menu() {
     echo -e "${green}═══════════════════════════════════════${plain}"
     echo -e "  ${blue}1.${plain} Перезапуск бота (make r)"
     echo -e "  ${blue}2.${plain} Swap (вкл/выкл)"
-    echo -e "  ${blue}3.${plain} Остановить ненужные Docker-контейнеры (выбор: все / без adguard)"
+    echo -e "  ${blue}3.${plain} Docker-контейнеры по списку (остановить / запустить)"
     echo -e "  ${blue}4.${plain} Автоперезапуск бота при загрузке (вкл/выкл)"
     echo -e "  ${blue}5.${plain} Остановка контейнеров после загрузки (вкл/выкл)"
     echo -e "  ${blue}6.${plain} BBR (вкл/выкл)"
@@ -886,10 +930,10 @@ case "${cmd#--}" in
     tz_menu
     ;;
   -all)
-    run_all_in_one
+    run_all_in_one "${2:-no-adguard}"
     ;;
   -all-not)
-    run_all_not
+    run_all_not "${2:-no-adguard}"
     ;;
   *)
     LOGE "Неизвестная команда: $cmd"
